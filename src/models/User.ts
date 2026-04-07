@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import { mongoose, Schema, Document } from '../utils/mongoose.shim';
 
 /**
  * User role types
@@ -60,7 +60,6 @@ const UserSchema = new Schema<IUser>({
 });
 
 // Indexes for performance
-UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ clearance_level: 1 });
 UserSchema.index({ role: 1 });
 
@@ -73,7 +72,12 @@ UserSchema.set('toJSON', {
   }
 });
 
+import { config } from '../config/env';
+import { mockDb } from '../utils/mock-db-provider';
+
 /**
- * User model
+ * User model (Real or Mock)
  */
-export const User = mongoose.model<IUser>('User', UserSchema);
+export const User = config.security.useLocalDb
+  ? mockDb.getModel<IUser>('User')
+  : mongoose.model<IUser>('User', UserSchema);

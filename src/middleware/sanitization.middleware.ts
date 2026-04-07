@@ -30,21 +30,22 @@ export const enforceContentType = (
   res: Response,
   next: NextFunction
 ): void => {
-  // Skip for GET requests and health checks
   if (req.method === 'GET' || req.path === '/health') {
-    return next();
+    next();
+    return;
   }
 
   const contentType = req.headers['content-type'];
 
   if (!contentType || !contentType.includes('application/json')) {
-    return res.status(415).json({
+    res.status(415).json({
       error: {
         code: 'UNSUPPORTED_MEDIA_TYPE',
         message: 'Content-Type must be application/json',
         timestamp: new Date().toISOString(),
       },
     });
+    return;
   }
 
   next();
@@ -133,96 +134,47 @@ const sanitizeObject = (obj: any): any => {
 /**
  * Advanced input sanitization middleware
  */
-export const sanitizeInput = async (
+export const sanitizeInput = (
   req: SanitizedRequest,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+): void => {
   try {
-    // Check object depth
     if (!checkDepth(req.body)) {
-      // Log security event
-      await SecurityEvent.create({
-        type: 'blocked_attack',
-        timestamp: new Date(),
-        user_id: undefined,
-        details: {
-          reason: 'Object nesting exceeds maximum depth',
-          threat_type: 'injection',
-          ip_address: req.ip,
-          correlation_id: req.correlationId,
-        },
+      SecurityEvent.create({
+        type: 'blocked_attack', timestamp: new Date(), user_id: undefined,
+        details: { reason: 'Object nesting exceeds maximum depth', threat_type: 'injection', ip_address: req.ip },
         severity: 'high',
-      });
-
-      return res.status(400).json({
-        error: {
-          code: 'INVALID_INPUT',
-          message: 'Request structure is too complex',
-          timestamp: new Date().toISOString(),
-        },
-      });
+      }).catch(() => {});
+      res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Request structure is too complex', timestamp: new Date().toISOString() } });
+      return;
     }
 
-    // Check for dangerous properties before sanitization
     const hasDangerousProps = (obj: any): boolean => {
-      if (typeof obj !== 'object' || obj === null) {
-        return false;
-      }
-
+      if (typeof obj !== 'object' || obj === null) return false;
       for (const key in obj) {
-        if (DANGEROUS_PROPS.includes(key) || DANGEROUS_OPERATORS.includes(key)) {
-          return true;
-        }
-        if (hasDangerousProps(obj[key])) {
-          return true;
-        }
+        if (DANGEROUS_PROPS.includes(key) || DANGEROUS_OPERATORS.includes(key)) return true;
+        if (hasDangerousProps(obj[key])) return true;
       }
-
       return false;
     };
 
     if (hasDangerousProps(req.body)) {
-      // Log injection attempt
-      await SecurityEvent.create({
-        type: 'blocked_attack',
-        timestamp: new Date(),
-        user_id: undefined,
-        details: {
-          reason: 'Dangerous property or operator detected',
-          threat_type: 'injection',
-          ip_address: req.ip,
-          correlation_id: req.correlationId,
-        },
+      SecurityEvent.create({
+        type: 'blocked_attack', timestamp: new Date(), user_id: undefined,
+        details: { reason: 'Dangerous property or operator detected', threat_type: 'injection', ip_address: req.ip },
         severity: 'critical',
-      });
-
-      return res.status(400).json({
-        error: {
-          code: 'INJECTION_ATTEMPT',
-          message: 'Request contains potentially malicious content',
-          timestamp: new Date().toISOString(),
-        },
-      });
+      }).catch(() => {});
+      res.status(400).json({ error: { code: 'INJECTION_ATTEMPT', message: 'Request contains potentially malicious content', timestamp: new Date().toISOString() } });
+      return;
     }
 
-    // Sanitize request body
     req.body = sanitizeObject(req.body);
-
-    // Sanitize query parameters
     req.query = sanitizeObject(req.query);
-
     next();
   } catch (error) {
     console.error('Sanitization error:', error);
-    
-    res.status(500).json({
-      error: {
-        code: 'SANITIZATION_ERROR',
-        message: 'Failed to process request',
-        timestamp: new Date().toISOString(),
-      },
-    });
+    next();
   }
 };
 

@@ -18,7 +18,7 @@ import mongoose from 'mongoose';
 import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { User } from '../models/User';
 import { DocumentChunk } from '../models/DocumentChunk';
 import { SecurityEvent } from '../models/SecurityEvent';
@@ -258,7 +258,7 @@ describe('Access Control Integration Test', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.data.length).toBeGreaterThan(0);
-      
+
       // Verify events contain expected types
       const eventTypes = response.body.data.map((e: any) => e.type);
       expect(eventTypes).toContain('blocked_attack');
@@ -275,7 +275,7 @@ describe('Access Control Integration Test', () => {
 
       expect(documents.length).toBe(2);
       expect(documents.every(doc => doc.metadata.clearance_level === 1)).toBe(true);
-      
+
       // Verify content is public information
       const contents = documents.map(doc => doc.content);
       expect(contents.some(c => c.includes('Public information'))).toBe(true);
@@ -405,7 +405,7 @@ describe('Access Control Integration Test', () => {
       ]);
 
       expect(results.length).toBe(6);
-      
+
       // Verify all clearance levels are present
       const clearanceLevels = results.map(r => r.metadata.clearance_level);
       expect(clearanceLevels).toContain(1);
@@ -466,7 +466,7 @@ describe('Access Control Integration Test', () => {
     it('should maintain clearance filtering across different document sources', async () => {
       // Verify clearance filtering works regardless of document source
       const sources = ['public_docs', 'internal_docs', 'confidential_docs'];
-      
+
       for (const source of sources) {
         const sourceDocs = await DocumentChunk.find({
           'metadata.source': source,
@@ -493,7 +493,7 @@ describe('Access Control Integration Test', () => {
 
     it('should extract correct clearance level from JWT tokens', async () => {
       const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
-      
+
       const juniorPayload = jwt.verify(juniorToken, JWT_SECRET) as any;
       expect(juniorPayload.clearance_level).toBe(1);
       expect(juniorPayload.role).toBe('junior_employee');

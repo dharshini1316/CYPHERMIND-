@@ -94,3 +94,34 @@ export const requireClearance = (minLevel: number) => {
     next();
   };
 };
+
+/**
+ * Role-based authorization middleware factory
+ * @param roles - Allowed roles
+ * @returns Express middleware function
+ */
+export const authorize = (roles: string[]) => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        error: {
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Authentication is required'
+        }
+      });
+      return;
+    }
+
+    if (!roles.includes(req.user.role)) {
+      res.status(403).json({
+        error: {
+          code: 'INSUFFICIENT_PERMISSIONS',
+          message: 'You do not have permission to perform this action'
+        }
+      });
+      return;
+    }
+
+    next();
+  };
+};

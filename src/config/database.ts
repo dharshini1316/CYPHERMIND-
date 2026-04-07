@@ -1,78 +1,56 @@
-import mongoose from 'mongoose';
-import { env } from './env';
+import { mongoose } from '../utils/mongoose.shim';
+import { env, config } from './env';
 
-// Connection options with retry logic
-const connectionOptions: mongoose.ConnectOptions = {
-  maxPoolSize: 10,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-};
-
-// Retry configuration
-const MAX_RETRIES = 5;
-const RETRY_DELAY = 5000; // 5 seconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000;
 
 /**
- * Connect to MongoDB Atlas with retry logic
+ * Connect to MongoDB with automated fallback
+ * 1. Try Atlas (if USE_LOCAL_DB is false)
+ * 2. Fallback to Local Mock Mode if Atlas fails or if forced
  */
 export const connectDatabase = async (): Promise<void> => {
-  let retries = 0;
+  const useLocal = config.security.useLocalDb;
 
+  if (useLocal) {
+    console.log('🏗️  Database: Local Mock Mode Active (Pure JS - No Binary)');
+    // No-op for mock mode, models handle themselves via mock-db-provider
+    return;
+  }
+
+  let retries = 0;
   while (retries < MAX_RETRIES) {
     try {
+      console.log(`📡 Connecting to MongoDB Atlas (Attempt ${retries + 1}/${MAX_RETRIES})...`);
       await mongoose.connect(env.MONGODB_URI, {
-        ...connectionOptions,
-        dbName: env.MONGODB_DB_NAME
+        dbName: env.MONGODB_DB_NAME,
+        serverSelectionTimeoutMS: 5000,
       });
 
       console.log('✅ MongoDB Atlas connected successfully');
-      console.log(`📊 Database: ${env.MONGODB_DB_NAME}`);
-      
-      // Set up connection event handlers
-      mongoose.connection.on('error', (error) => {
-        console.error('❌ MongoDB connection error:', error);
-      });
-
-      mongoose.connection.on('disconnected', () => {
-        console.warn('⚠️  MongoDB disconnected. Attempting to reconnect...');
-      });
-
-      mongoose.connection.on('reconnected', () => {
-        console.log('✅ MongoDB reconnected successfully');
-      });
-
       return;
-    } catch (error) {
+    } catch (error: any) {
       retries++;
-      console.error(`❌ MongoDB connection attempt ${retries}/${MAX_RETRIES} failed:`, error);
+      console.warn(`⚠️  Atlas connection failed: ${error.message}`);
 
-      if (retries >= MAX_RETRIES) {
-        console.error('❌ Max retries reached. Could not connect to MongoDB.');
-        process.exit(1);
+      if (retries < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
       }
-
-      console.log(`⏳ Retrying in ${RETRY_DELAY / 1000} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
     }
   }
+
+  console.error('❌ Could not connect to MongoDB Atlas. Defaulting to Local Mock Mode...');
 };
 
-/**
- * Disconnect from MongoDB
- */
 export const disconnectDatabase = async (): Promise<void> => {
   try {
     await mongoose.disconnect();
     console.log('✅ MongoDB disconnected successfully');
   } catch (error) {
     console.error('❌ Error disconnecting from MongoDB:', error);
-    throw error;
   }
 };
 
-/**
- * Get database connection status
- */
 export const getDatabaseStatus = (): string => {
   const states: Record<number, string> = {
     0: 'disconnected',
@@ -80,5 +58,6 @@ export const getDatabaseStatus = (): string => {
     2: 'connecting',
     3: 'disconnecting'
   };
-  return states[mongoose.connection.readyState] || 'unknown';
+  const baseStatus = states[mongoose.connection.readyState] || 'unknown';
+  return config.security.useLocalDb ? `Mock Mode (JS)` : baseStatus;
 };

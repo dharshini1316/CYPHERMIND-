@@ -1,9 +1,11 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import { mongoose, Schema, Document } from '../utils/mongoose.shim';
+import { config } from '../config/env';
+import { mockDb } from '../utils/mock-db-provider';
 
 /**
  * Security event types
  */
-export type SecurityEventType = 'blocked_attack' | 'redaction' | 'access_denied' | 'auth_failure';
+export type SecurityEventType = 'blocked_attack' | 'redaction' | 'access_denied' | 'auth_failure' | 'simulated_attack';
 
 /**
  * Security event severity levels
@@ -22,6 +24,12 @@ export interface ISecurityEventDetails {
   ip_address?: string;
   redactions_count?: number;
   redactions_by_type?: Record<string, number>;
+  simulation_id?: string;
+  attack_description?: string;
+  suggested_fix?: string;
+  pr_url?: string;
+  risk_score?: number;
+  success?: boolean;
   [key: string]: any; // Allow additional fields
 }
 
@@ -31,7 +39,7 @@ export interface ISecurityEventDetails {
 export interface ISecurityEvent extends Document {
   type: SecurityEventType;
   timestamp: Date;
-  user_id?: mongoose.Types.ObjectId;
+  user_id?: string | null;
   details: ISecurityEventDetails;
   severity: SecurityEventSeverity;
 }
@@ -42,7 +50,7 @@ export interface ISecurityEvent extends Document {
 const SecurityEventSchema = new Schema<ISecurityEvent>({
   type: {
     type: String,
-    enum: ['blocked_attack', 'redaction', 'access_denied', 'auth_failure'],
+    enum: ['blocked_attack', 'redaction', 'access_denied', 'auth_failure', 'simulated_attack'],
     required: [true, 'Event type is required']
   },
   timestamp: {
@@ -51,7 +59,7 @@ const SecurityEventSchema = new Schema<ISecurityEvent>({
     required: true
   },
   user_id: {
-    type: Schema.Types.ObjectId,
+    type: Schema.Types.Mixed,
     ref: 'User',
     required: false
   },
@@ -87,6 +95,30 @@ const SecurityEventSchema = new Schema<ISecurityEvent>({
     redactions_by_type: {
       type: Schema.Types.Mixed,
       required: false
+    },
+    simulation_id: {
+      type: String,
+      required: false
+    },
+    attack_description: {
+      type: String,
+      required: false
+    },
+    suggested_fix: {
+      type: String,
+      required: false
+    },
+    pr_url: {
+      type: String,
+      required: false
+    },
+    risk_score: {
+      type: Number,
+      required: false
+    },
+    success: {
+      type: Boolean,
+      required: false
     }
   },
   severity: {
@@ -112,6 +144,8 @@ SecurityEventSchema.index({ severity: 1, timestamp: -1 });
 SecurityEventSchema.index({ user_id: 1, timestamp: -1 });
 
 /**
- * Security event model
+ * Security event model (Real or Mock)
  */
-export const SecurityEvent = mongoose.model<ISecurityEvent>('SecurityEvent', SecurityEventSchema);
+export const SecurityEvent = config.security.useLocalDb
+  ? mockDb.getModel<ISecurityEvent>('SecurityEvent')
+  : mongoose.model<ISecurityEvent>('SecurityEvent', SecurityEventSchema);

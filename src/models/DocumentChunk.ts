@@ -1,4 +1,6 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import { mongoose, Schema, Document } from '../utils/mongoose.shim';
+import { config } from '../config/env';
+import { mockDb } from '../utils/mock-db-provider';
 
 /**
  * Document chunk metadata interface
@@ -33,7 +35,7 @@ const DocumentChunkSchema = new Schema<IDocumentChunk>({
     type: [Number],
     required: [true, 'Embedding vector is required'],
     validate: {
-      validator: function(v: number[]) {
+      validator: function (v: number[]) {
         return v.length === 3072; // Google Gemini gemini-embedding-001 dimension
       },
       message: 'Embedding must be a 3072-dimensional vector'
@@ -75,12 +77,14 @@ DocumentChunkSchema.index({ 'metadata.document_id': 1 });
 DocumentChunkSchema.index({ 'metadata.source': 1 });
 
 // Compound index for clearance-based filtering
-DocumentChunkSchema.index({ 
-  'metadata.clearance_level': 1, 
-  'metadata.document_id': 1 
+DocumentChunkSchema.index({
+  'metadata.clearance_level': 1,
+  'metadata.document_id': 1
 });
 
 /**
- * Document chunk model
+ * Document chunk model (Real or Mock)
  */
-export const DocumentChunk = mongoose.model<IDocumentChunk>('DocumentChunk', DocumentChunkSchema);
+export const DocumentChunk = config.security.useLocalDb
+  ? mockDb.getModel<IDocumentChunk>('DocumentChunk')
+  : mongoose.model<IDocumentChunk>('DocumentChunk', DocumentChunkSchema);

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '../utils/gemini';
 import { env } from '../config/env';
 import { SecurityEvent } from '../models/SecurityEvent';
 
@@ -61,7 +61,7 @@ export class ScrubberService {
 
   constructor() {
     this.genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
   /**
@@ -75,14 +75,20 @@ export class ScrubberService {
       const allRedactions: PIIMatch[] = [];
       const redactedChunks: string[] = [];
 
+      let chunkIdx = 0;
       for (const chunk of chunks) {
+        chunkIdx++;
+        console.log(`[Scrubber] Redacting chunk ${chunkIdx}/${chunks.length}...`);
+
         // Pass 1: Regex-based PII detection
-        const { redactedText: regexRedacted, matches: regexMatches } = 
+        const { redactedText: regexRedacted, matches: regexMatches } =
           this.detectRegexPII(chunk);
+        console.log(`[Scrubber] Regex pass complete. Found ${regexMatches.length} matches.`);
 
         // Pass 2: Semantic PII detection with Gemini
-        const { redactedText: finalRedacted, matches: semanticMatches } = 
+        const { redactedText: finalRedacted, matches: semanticMatches } =
           await this.detectSemanticPII(regexRedacted);
+        console.log(`[Scrubber] Semantic pass complete. Found ${semanticMatches.length} matches.`);
 
         redactedChunks.push(finalRedacted);
         allRedactions.push(...regexMatches, ...semanticMatches);
@@ -147,33 +153,11 @@ export class ScrubberService {
         return { redactedText: text, matches: [] };
       }
 
-      const prompt = `You are a PII detection system. Analyze the following text and identify any personally identifiable information that regex patterns might miss.
-
-Look for:
-- Names in context (e.g., "John Smith's salary", "Contact Sarah")
-- Addresses (street addresses, cities with zip codes)
-- Dates of birth
-- Account numbers or IDs
-- Any other sensitive personal information
-
-Text to analyze:
-"""
-${text}
-"""
-
-Return ONLY a JSON array of detected PII. Each item should have:
-- "text": the exact PII text found
-- "type": one of "name", "address", "date_of_birth", "account_number"
-- "start": character position where PII starts
-- "end": character position where PII ends
-
-If no PII is found, return an empty array: []
-
-Example response:
-[
-  {"text": "John Smith", "type": "name", "start": 15, "end": 25},
-  {"text": "123 Main St", "type": "address", "start": 45, "end": 56}
-]`;
+      const prompt = `
+Task: Identify PII (names, addresses, IDs) in text that pattern matching might miss.
+Input: { "text": "${text}" }
+Output: A JSON array of objects with "text", "type", "start", "end".
+Constraints: Types must be: name, address, date_of_birth, account_number. Return [] if none.`;
 
       const result = await this.model.generateContent(prompt);
       const response = result.response.text();
@@ -190,7 +174,7 @@ Example response:
 
       for (const match of piiMatches) {
         const placeholder = `[REDACTED_${match.type.toUpperCase()}]`;
-        
+
         matches.push({
           type: match.type as PIIType,
           original: match.text,
@@ -200,7 +184,7 @@ Example response:
         });
 
         // Replace PII with placeholder
-        redactedText = 
+        redactedText =
           redactedText.substring(0, match.start) +
           placeholder +
           redactedText.substring(match.end);
@@ -208,7 +192,7 @@ Example response:
 
       return { redactedText, matches };
     } catch (error) {
-      console.error('Semantic PII detection failed:', error);
+      // console.error('Semantic PII detection failed:', error); // Log strictly to avoid Windows native crashes
       // Return original text if semantic detection fails
       return { redactedText: text, matches: [] };
     }
@@ -228,14 +212,14 @@ Example response:
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       if (!Array.isArray(parsed)) {
         return [];
       }
 
-      return parsed.filter(item => 
-        item.text && item.type && 
-        typeof item.start === 'number' && 
+      return parsed.filter(item =>
+        item.text && item.type &&
+        typeof item.start === 'number' &&
         typeof item.end === 'number'
       );
     } catch (error) {

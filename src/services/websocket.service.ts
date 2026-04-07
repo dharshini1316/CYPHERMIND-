@@ -19,14 +19,13 @@ interface AuthenticatedWebSocket extends WebSocket {
  */
 export class WebSocketService {
   private wss: WebSocket.Server | null = null;
-  private changeStream: any = null;
 
   /**
    * Initialize WebSocket server
    * @param server - HTTP server instance
    */
   initialize(server: Server): void {
-    this.wss = new WebSocket.Server({ 
+    this.wss = new WebSocket.Server({
       server,
       path: '/ws/events',
     });
@@ -38,9 +37,6 @@ export class WebSocketService {
 
     // Set up heartbeat to detect dead connections
     this.setupHeartbeat();
-
-    // Set up MongoDB Change Stream
-    this.setupChangeStream();
   }
 
   /**
@@ -65,8 +61,8 @@ export class WebSocketService {
       // Verify JWT token
       const payload = validateToken(token);
 
-      // Check if user has Security_Admin role (clearance level 3)
-      if (payload.clearance_level < 3) {
+      // Check if user has at least Level 1 clearance
+      if (payload.clearance_level < 1) {
         ws.close(1008, 'Insufficient clearance level');
         console.warn(`❌ WebSocket connection rejected: User ${payload.user_id} has insufficient clearance`);
         return;
@@ -140,37 +136,6 @@ export class WebSocketService {
     }, 30000); // Check every 30 seconds
   }
 
-  /**
-   * Set up MongoDB Change Stream to listen for new security events
-   */
-  private setupChangeStream(): void {
-    try {
-      this.changeStream = securityEventService.streamEvents();
-
-      this.changeStream.on('change', (change: any) => {
-        if (change.operationType === 'insert') {
-          const event = change.fullDocument as ISecurityEvent;
-          this.broadcastEvent(event);
-        }
-      });
-
-      this.changeStream.on('error', (error: Error) => {
-        console.error('Change stream error:', error);
-        // Don't retry in test environment (mongodb-memory-server doesn't support replica sets)
-        if (process.env.NODE_ENV !== 'test') {
-          // Attempt to reconnect after 5 seconds
-          setTimeout(() => {
-            console.log('🔄 Attempting to reconnect change stream...');
-            this.setupChangeStream();
-          }, 5000);
-        }
-      });
-
-      console.log('📡 MongoDB Change Stream connected');
-    } catch (error) {
-      console.error('Failed to set up change stream:', error);
-    }
-  }
 
   /**
    * Broadcast security event to all connected clients
@@ -211,10 +176,6 @@ export class WebSocketService {
    * Close WebSocket server and change stream
    */
   close(): void {
-    if (this.changeStream) {
-      this.changeStream.close();
-      console.log('🔌 Change stream closed');
-    }
 
     if (this.wss) {
       this.wss.close();

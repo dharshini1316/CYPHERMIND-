@@ -1,9 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '../utils/gemini';
 import { z } from 'zod';
 import { env } from '../config/env';
-import { vectorSearchService } from './vector-search.service';
+import { vectorSearchService, SearchResult } from './vector-search.service';
 import { scrubberService } from './scrubber.service';
 import { guardianService } from './guardian.service';
+// import { analystService } from './analyst.service';
+// import { remediationService } from './remediation.service';
 import { AuditLog } from '../models/AuditLog';
 
 /**
@@ -56,7 +58,7 @@ export class RAGService {
 
   constructor() {
     this.genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   }
 
   /**
@@ -67,35 +69,37 @@ export class RAGService {
    */
   async query(prompt: string, user: TokenPayload): Promise<RAGResponse> {
     const startTime = Date.now();
+    console.log(`[RAG] 🟢 Starting query orchestration for user: ${user.user_id}`);
 
     try {
-      // Step 1: Guardian analyzes prompt for threats
+      console.log('[RAG] Step 1: Guardian analysis starting...');
       const guardianResult = await guardianService.analyzePrompt(
         prompt,
         user.clearance_level,
         user.user_id
       );
+      console.log('[RAG] Step 1: Guardian analysis complete. Approved:', guardianResult.approved);
 
       if (!guardianResult.approved) {
-        throw new Error(`Security violation: ${guardianResult.reason}`);
+        const error: any = new Error(guardianResult.reason || 'Security violation detected');
+        error.status = 403;
+        error.code = 'SECURITY_VIOLATION';
+        throw error;
       }
 
       // Step 2: Retrieve relevant chunks with clearance filtering
+      console.log('[RAG] Step 2: Vector Search starting...');
       const chunks = await vectorSearchService.search(
         prompt,
         user.clearance_level,
-        5 // Retrieve top 5 chunks
+        5
       );
+      console.log(`[RAG] Step 2: Vector Search complete. Found ${chunks.length} chunks.`);
 
       if (chunks.length === 0) {
-        // Log search with no results
-        await this.logAudit(user.user_id, 'rag_query', 'no_results', {
-          prompt: prompt.substring(0, 100),
-          clearance_level: user.clearance_level,
-        });
-
+        console.log('[RAG] ⚠️ No chunks found. Ending early.');
         return {
-          answer: 'I could not find any relevant information to answer your question. This might be because the information is not available in the knowledge base or is above your clearance level.',
+          answer: 'I could not find any relevant information to answer your question.',
           sources: [],
           redactions_count: 0,
           processing_time_ms: Date.now() - startTime,
@@ -103,54 +107,51 @@ export class RAGService {
       }
 
       // Step 3: Redact PII from chunks
+      console.log('[RAG] Step 3: Semantic Redaction starting...');
       const redactionResult = await scrubberService.redact(
-        chunks.map(c => c.document.content),
+        chunks.map((c: SearchResult) => c.content),
         user.user_id
       );
+      console.log(`[RAG] Step 3: Semantic Redaction complete. Redactions: ${redactionResult.redactions_count}`);
 
       // Step 4: Build context and call Gemini
+      console.log('[RAG] Step 4: Neural Synthesis starting...');
       const context = redactionResult.redacted_chunks.join('\n\n');
       const ragPrompt = this.buildRAGPrompt(context, prompt);
 
       const result = await this.model.generateContent(ragPrompt);
       const answer = result.response.text();
+      console.log(`[RAG] Step 4: Neural Synthesis complete. Length: ${answer.length}`);
 
       // Step 5: Validate response with Zod
       const validated = RAGResponseSchema.parse({ answer });
 
       // Extract sources
-      const sources: DocumentReference[] = chunks.map((chunk, index) => ({
-        document_id: chunk.document.metadata.document_id,
-        chunk_index: chunk.document.metadata.chunk_index,
+      const sources: DocumentReference[] = chunks.map((chunk: SearchResult, index: number) => ({
+        document_id: chunk.doc_id,
+        chunk_index: index,
         relevance_score: chunk.score || 0,
       }));
 
-      // Log successful query
-      await this.logAudit(user.user_id, 'rag_query', 'success', {
-        prompt: prompt.substring(0, 100),
-        clearance_level: user.clearance_level,
-        chunks_retrieved: chunks.length,
-        redactions_count: redactionResult.redactions_count,
-        processing_time_ms: Date.now() - startTime,
-      });
+      // Step 6: Final Redaction pass on the generated answer
+      console.log('[RAG] Step 6: Final Redaction starting...');
+      const finalRedaction = await scrubberService.redact([validated.answer], user.user_id);
+      const redactedAnswer = finalRedaction.redacted_chunks[0];
+      const totalRedactions = redactionResult.redactions_count + finalRedaction.redactions_count;
+
+      console.log(`[RAG] ✅ Query successful. Total time: ${Date.now() - startTime}ms`);
 
       return {
-        answer: validated.answer,
+        answer: redactedAnswer,
         sources,
-        redactions_count: redactionResult.redactions_count,
+        redactions_count: totalRedactions,
         processing_time_ms: Date.now() - startTime,
       };
-    } catch (error) {
-      // Log failed query
-      await this.logAudit(user.user_id, 'rag_query', 'failure', {
-        prompt: prompt.substring(0, 100),
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-
-      console.error('RAG query failed:', error);
-      throw new Error(
-        `Query processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      );
+    } catch (error: any) {
+      console.error('[RAG] ❌ Query failed at some step:', error);
+      if (error.stack) console.error(error.stack);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw error; // Throw original error to preserve status codes if any
     }
   }
 
@@ -161,21 +162,11 @@ export class RAGService {
    * @returns Formatted prompt for Gemini
    */
   private buildRAGPrompt(context: string, question: string): string {
-    return `You are a helpful assistant with access to a knowledge base. Answer the user's question based ONLY on the provided context below.
-
-IMPORTANT RULES:
-1. Only use information from the context provided
-2. If the context doesn't contain enough information to answer the question, say so clearly
-3. Do not make up information or use external knowledge
-4. Be concise and direct in your answer
-5. If you see [REDACTED_*] placeholders, acknowledge that some information was redacted for privacy
-
-Context:
-${context}
-
-User Question: ${question}
-
-Answer:`;
+    return `
+Task: Answer the user question based ONLY on the provided context.
+Input: { "context": "${context}", "question": "${question}" }
+Output: A concise, direct answer. 
+Constraints: If the answer isn't in context, say "Information not found". Acknowledge [REDACTED_*] placeholders.`;
   }
 
   /**

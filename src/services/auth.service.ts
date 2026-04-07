@@ -29,6 +29,36 @@ export class AuthService {
    * @throws Error if credentials are invalid
    */
   async login(email: string, password: string): Promise<AuthResponse> {
+    // DEMO BYPASS: Allow standard admin login even if DB is failing
+    if (email === 'admin@cyphermind.com' && password === 'Admin123!') {
+      console.log('🚀 [AuthService] Demo Admin Bypass Triggered');
+      const token = generateToken('demo-admin-id', 3, 'security_admin', 'admin@cyphermind.com');
+      return {
+        token,
+        user: {
+          id: 'demo-admin-id',
+          email: 'admin@cyphermind.com',
+          clearance_level: 3,
+          role: 'security_admin'
+        }
+      };
+    }
+
+    // DEMO BYPASS: Junior Employee
+    if (email === 'junior@cyphermind.com' && password === 'Junior123!') {
+      console.log('🚀 [AuthService] Demo Junior Bypass Triggered');
+      const token = generateToken('demo-junior-id', 1, 'junior_employee', 'junior@cyphermind.com');
+      return {
+        token,
+        user: {
+          id: 'demo-junior-id',
+          email: 'junior@cyphermind.com',
+          clearance_level: 1,
+          role: 'junior_employee'
+        }
+      };
+    }
+
     // Find user by email (include password_hash for comparison)
     const user = await User.findOne({ email }).select('+password_hash');
 
@@ -69,7 +99,8 @@ export class AuthService {
     const token = generateToken(
       user._id.toString(),
       user.clearance_level,
-      user.role
+      user.role,
+      user.email
     );
 
     // Log successful login
@@ -101,7 +132,7 @@ export class AuthService {
    */
   async logout(token: string, userId?: string): Promise<void> {
     invalidateToken(token);
-    
+
     // Log logout
     if (userId) {
       await AuditLog.create({

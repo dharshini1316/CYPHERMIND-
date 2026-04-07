@@ -13,7 +13,7 @@ import { ragService } from '../services/rag.service';
 export const processQuery = async (req: Request, res: Response): Promise<void> => {
   try {
     const { prompt } = req.body;
-    const user = (req as any).user; // Attached by auth middleware
+    const user = (req as any).user;
 
     if (!prompt || typeof prompt !== 'string') {
       res.status(400).json({
@@ -33,25 +33,14 @@ export const processQuery = async (req: Request, res: Response): Promise<void> =
       success: true,
       data: result,
     });
-  } catch (error) {
-    console.error('Query processing error:', error);
-
-    // Check if it's a security violation
-    if (error instanceof Error && error.message.includes('Security violation')) {
-      res.status(403).json({
-        error: {
-          code: 'SECURITY_VIOLATION',
-          message: error.message,
-          timestamp: new Date().toISOString(),
-        },
-      });
-      return;
-    }
-
-    res.status(500).json({
+  } catch (error: any) {
+    const msg = error instanceof Error ? error.message : String(error);
+    const statusCode = error.status || 500;
+    res.status(statusCode).json({
+      success: false,
       error: {
-        code: 'QUERY_PROCESSING_FAILED',
-        message: 'Failed to process your query. Please try again.',
+        code: error.code || 'QUERY_PROCESSING_FAILED',
+        message: msg,
         timestamp: new Date().toISOString(),
       },
     });

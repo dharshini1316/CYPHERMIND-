@@ -68,20 +68,20 @@ async function createVectorIndex() {
 
     // Check if collection exists
     const collections = await db.listCollections({ name: 'document_chunks' }).toArray();
-    
+
     if (collections.length === 0) {
       console.log('\n⚠️  Collection "document_chunks" does not exist yet');
       console.log('It will be created automatically when you insert the first document');
     } else {
       console.log('\n✅ Collection "document_chunks" exists');
-      
-      // Get collection stats
-      const stats = await collection.stats();
+
+      // Get collection stats via db command (collection.stats() removed in newer driver)
+      const stats = await db.command({ collStats: 'document_chunks' });
       console.log(`📊 Documents in collection: ${stats.count}`);
     }
 
     console.log('\n✅ Vector index setup instructions provided');
-    
+
   } catch (error) {
     console.error('❌ Error:', error);
     process.exit(1);

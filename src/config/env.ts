@@ -13,7 +13,12 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().min(1, 'Gemini API key is required'),
   PORT: z.string().default('3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  FRONTEND_URL: z.string().default('http://localhost:5173')
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
+  GITHUB_PAT: z.string().min(1, 'GitHub PAT is required'),
+  GITHUB_REPO: z.string().min(1, 'GitHub repository is required'),
+  ETHICAL_HACKER_MODE: z.string().default('false'),
+  SIMULATION_INTERVAL_MS: z.string().default('3600000'),
+  USE_LOCAL_DB: z.string().default('false'),
 });
 
 // Validate environment variables
@@ -52,4 +57,13 @@ export const config = {
     nodeEnv: env.NODE_ENV,
     frontendUrl: env.FRONTEND_URL,
   },
+  github: {
+    pat: env.GITHUB_PAT,
+    repo: env.GITHUB_REPO,
+  },
+  security: {
+    ethicalHackerMode: env.ETHICAL_HACKER_MODE === 'true',
+    simulationIntervalMs: parseInt(env.SIMULATION_INTERVAL_MS, 10),
+    useLocalDb: env.USE_LOCAL_DB === 'true',
+  }
 };

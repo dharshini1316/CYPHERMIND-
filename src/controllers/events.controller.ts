@@ -48,6 +48,8 @@ export const getEvents = async (req: Request, res: Response): Promise<void> => {
 
     if (limit) {
       filters.limit = parseInt(limit as string, 10);
+    } else {
+      filters.limit = 10; // Default to 10 for "Last 10 actions"
     }
 
     if (skip) {

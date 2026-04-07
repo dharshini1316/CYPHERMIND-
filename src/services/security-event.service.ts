@@ -1,4 +1,5 @@
 import { SecurityEvent, ISecurityEvent, SecurityEventType, SecurityEventSeverity } from '../models/SecurityEvent';
+// import { AuditLog } from '../models/AuditLog';
 import { ChangeStream } from 'mongodb';
 import mongoose from 'mongoose';
 
@@ -99,6 +100,8 @@ export class SecurityEventService {
     redactions: number;
     auth_failures: number;
     access_denied: number;
+    high_risk_events: number;
+    total_queries: number;
   }> {
     try {
       const query: any = {};
@@ -114,12 +117,13 @@ export class SecurityEventService {
         }
       }
 
-      const [total, blocked, redactions, authFailures, accessDenied] = await Promise.all([
+      const [total, blocked, redactions, authFailures, accessDenied, highRisk] = await Promise.all([
         SecurityEvent.countDocuments(query),
         SecurityEvent.countDocuments({ ...query, type: 'blocked_attack' }),
         SecurityEvent.countDocuments({ ...query, type: 'redaction' }),
         SecurityEvent.countDocuments({ ...query, type: 'auth_failure' }),
         SecurityEvent.countDocuments({ ...query, type: 'access_denied' }),
+        SecurityEvent.countDocuments({ ...query, severity: { $in: ['high', 'critical'] } }),
       ]);
 
       return {
@@ -128,6 +132,8 @@ export class SecurityEventService {
         redactions,
         auth_failures: authFailures,
         access_denied: accessDenied,
+        high_risk_events: highRisk,
+        total_queries: 0 // Placeholder until AuditLog is re-integrated
       };
     } catch (error) {
       console.error('Failed to get event stats:', error);

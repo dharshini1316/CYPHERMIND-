@@ -7,6 +7,7 @@ import { UserRole } from '../models/User';
  */
 export interface TokenPayload {
   user_id: string;
+  email: string;
   clearance_level: number;
   role: UserRole;
   exp: number;
@@ -28,10 +29,12 @@ const tokenBlacklist = new Set<string>();
 export const generateToken = (
   userId: string,
   clearanceLevel: number,
-  role: UserRole
+  role: UserRole,
+  email: string
 ): string => {
   const payload = {
     user_id: userId,
+    email,
     clearance_level: clearanceLevel,
     role
   };

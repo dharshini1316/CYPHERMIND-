@@ -25,7 +25,7 @@ import { authService } from '../auth.service';
 import { User } from '../../models/User';
 import { SecurityEvent } from '../../models/SecurityEvent';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 describe('SOC Dashboard Real-Time Updates Integration Test', () => {
   let mongoServer: MongoMemoryServer;
@@ -433,7 +433,7 @@ describe('SOC Dashboard Real-Time Updates Integration Test', () => {
       });
 
       expect(highSeverityEvents.length).toBe(2);
-      expect(highSeverityEvents.every(e => 
+      expect(highSeverityEvents.every(e =>
         e.severity === 'critical' || e.severity === 'high'
       )).toBe(true);
     });

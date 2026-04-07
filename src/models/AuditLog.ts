@@ -1,4 +1,6 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import { mongoose, Schema, Document } from '../utils/mongoose.shim';
+import { config } from '../config/env';
+import { mockDb } from '../utils/mock-db-provider';
 
 /**
  * Audit log result types
@@ -10,7 +12,7 @@ export type AuditLogResult = 'success' | 'failure';
  */
 export interface IAuditLog extends Document {
   action: string;
-  user_id: mongoose.Types.ObjectId;
+  user_id: mongoose.Types.ObjectId | string | null;
   resource: string;
   result: AuditLogResult;
   timestamp: Date;
@@ -27,7 +29,7 @@ const AuditLogSchema = new Schema<IAuditLog>({
     trim: true
   },
   user_id: {
-    type: Schema.Types.ObjectId,
+    type: Schema.Types.Mixed, // Accepts ObjectId, string, or null
     ref: 'User',
     required: false // Allow null for failed login attempts where user doesn't exist
   },
@@ -69,6 +71,8 @@ AuditLogSchema.index({ result: 1, timestamp: -1 });
 AuditLogSchema.index({ user_id: 1, action: 1, timestamp: -1 });
 
 /**
- * Audit log model
+ * Audit log model (Real or Mock)
  */
-export const AuditLog = mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);
+export const AuditLog = config.security.useLocalDb
+  ? mockDb.getModel<IAuditLog>('AuditLog')
+  : mongoose.model<IAuditLog>('AuditLog', AuditLogSchema);

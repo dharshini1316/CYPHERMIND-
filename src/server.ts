@@ -5,6 +5,17 @@ import { env } from './config/env';
 import { connectDatabase, getDatabaseStatus } from './config/database';
 import { runStartupSecurityChecks } from './utils/security-checks';
 import authRoutes from './routes/auth.routes';
+import queryRoutes from './routes/query.routes';
+import eventsRoutes from './routes/events.routes';
+import auditRoutes from './routes/audit.routes';
+import githubRoutes from './routes/github.routes';
+import simulationRoutes from './routes/simulation.routes';
+import securityAuditorRoutes from './routes/security-auditor.routes';
+import {
+  addCorrelationId,
+  enforceContentType,
+  sanitizeInput,
+} from './middleware/sanitization.middleware';
 import {
   configureHelmet,
   globalRateLimiter,
@@ -22,18 +33,24 @@ app.use(configureHelmet());
 // Global rate limiter
 app.use(globalRateLimiter);
 
-// CORS configuration - strict allowlist
+// CORS configuration - allow localhost dev ports
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+
+    // Allow any localhost/127.0.0.1 origin during development
+    if (
+      origin.startsWith('http://localhost') ||
+      origin.startsWith('http://127.0.0.1') ||
+      origin.startsWith('https://localhost') ||
+      origin.startsWith('https://127.0.0.1')
+    ) {
       return callback(null, true);
     }
 
-    // Check if origin is in allowlist
-    const allowedOrigins = env.FRONTEND_URL.split(',').map(url => url.trim());
-    
-    if (allowedOrigins.includes(origin)) {
+    const allowed = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:3003', 'http://localhost:5173'];
+    if (allowed.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`Blocked CORS request from unauthorized origin: ${origin}`);
@@ -46,15 +63,8 @@ app.use(cors({
 }));
 
 // Body parsing middleware with size limits
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-
-// Request sanitization and correlation ID
-import {
-  addCorrelationId,
-  enforceContentType,
-  sanitizeInput,
-} from './middleware/sanitization.middleware';
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 app.use(addCorrelationId);
 app.use(enforceContentType);
@@ -81,18 +91,12 @@ app.get('/', (req: Request, res: Response) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
-
-import systemRoutes from './routes/system.routes';
-app.use('/api/system', systemRoutes);
-
-import queryRoutes from './routes/query.routes';
 app.use('/api/query', queryRoutes);
-
-import eventsRoutes from './routes/events.routes';
 app.use('/api/events', eventsRoutes);
-
-import auditRoutes from './routes/audit.routes';
 app.use('/api/audit-logs', auditRoutes);
+app.use('/api/github', githubRoutes);
+app.use('/api/simulation', simulationRoutes);
+app.use('/api/security-auditor', securityAuditorRoutes);
 
 // 404 handler - must be after all routes
 app.use(notFoundHandler);
@@ -108,6 +112,10 @@ const startServer = async () => {
 
     // Connect to MongoDB
     await connectDatabase();
+
+    // Internal Seeding (Demo Readiness)
+    const { seedDatabase } = require('./utils/seed-db');
+    await seedDatabase();
 
     // Initialize WebSocket server
     websocketService.initialize(server);
@@ -138,6 +146,16 @@ process.on('SIGINT', async () => {
   console.log('⚠️  SIGINT received. Shutting down gracefully...');
   websocketService.close();
   process.exit(0);
+});
+
+// Final Safety Net: Prevent native crashes from escaping to the OS
+process.on('uncaughtException', (error) => {
+  console.error('🔥 [CYPHERMIND] CRITICAL RUNTIME ERROR:', error);
+  // Keep process alive for demo stability
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🌊 [CYPHERMIND] UNHANDLED ASYNC REJECTION:', reason);
 });
 
 // Start the server

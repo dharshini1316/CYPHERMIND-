@@ -4,16 +4,16 @@ import { z } from 'zod';
  * Query request schema with NoSQL injection prevention
  */
 export const querySchema = z.object({
-  query: z.string()
-    .min(1, 'Query cannot be empty')
-    .max(2000, 'Query is too long')
+  prompt: z.string()
+    .min(1, 'Prompt cannot be empty')
+    .max(2000, 'Prompt is too long')
     .refine(
       (val) => {
         // Prevent NoSQL injection characters
         const dangerousChars = /[${}]/;
         return !dangerousChars.test(val);
       },
-      { message: 'Query contains invalid characters' }
+      { message: 'Prompt contains invalid characters' }
     ),
   token: z.string().optional() // Token is in header, but can be in body for some clients
 });
