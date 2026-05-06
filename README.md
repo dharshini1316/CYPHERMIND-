@@ -4,6 +4,8 @@
 
 A production-grade security-first application that enforces least privilege access, identity-bound authorization, and forensic-grade audit trails for secure AI retrieval using MongoDB Atlas vector search and Google Gemini.
 
+**Project Link:** https://idea.unisys.com/D8826
+
 ---
 
 ## 🚀 Quick Start
