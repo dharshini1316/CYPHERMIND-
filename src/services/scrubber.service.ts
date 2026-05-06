@@ -5,7 +5,7 @@ import { SecurityEvent } from '../models/SecurityEvent';
 /**
  * PII types that can be detected
  */
-export type PIIType = 'email' | 'ssn' | 'phone' | 'credit_card' | 'name' | 'address' | 'date_of_birth';
+export type PIIType = 'email' | 'ssn' | 'phone' | 'credit_card' | 'name' | 'address' | 'date_of_birth' | 'aadhar';
 
 /**
  * PII match information
@@ -46,6 +46,10 @@ const PII_PATTERNS = {
   credit_card: {
     pattern: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
     placeholder: '[REDACTED_CC]',
+  },
+  aadhar: {
+    pattern: /\b[2-9]\d{3}\s?\d{4}\s?\d{4}\b/g,
+    placeholder: '[REDACTED_AADHAR]',
   },
 };
 

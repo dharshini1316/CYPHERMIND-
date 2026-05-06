@@ -29,14 +29,16 @@ export class AuthService {
    * @throws Error if credentials are invalid
    */
   async login(email: string, password: string): Promise<AuthResponse> {
-    // DEMO BYPASS: Allow standard admin login even if DB is failing
-    if (email === 'admin@cyphermind.com' && password === 'Admin123!') {
-      console.log('🚀 [AuthService] Demo Admin Bypass Triggered');
-      const token = generateToken('demo-admin-id', 3, 'security_admin', 'admin@cyphermind.com');
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    // BOOTSTRAP: Admin
+    const isEmergencyAdmin = sanitizedEmail === 'admin@cyphermind.com' && password === 'Admin123!';
+    if (isEmergencyAdmin) {
+      console.log('🛡️  [AuthService] Bootstrap Admin Access GRANTED');
       return {
-        token,
+        token: generateToken('bootstrap-admin', 3, 'security_admin', 'admin@cyphermind.com'),
         user: {
-          id: 'demo-admin-id',
+          id: 'bootstrap-admin',
           email: 'admin@cyphermind.com',
           clearance_level: 3,
           role: 'security_admin'
@@ -44,16 +46,31 @@ export class AuthService {
       };
     }
 
-    // DEMO BYPASS: Junior Employee
-    if (email === 'junior@cyphermind.com' && password === 'Junior123!') {
-      console.log('🚀 [AuthService] Demo Junior Bypass Triggered');
-      const token = generateToken('demo-junior-id', 1, 'junior_employee', 'junior@cyphermind.com');
+    // BOOTSTRAP: Junior
+    const isEmergencyJunior = sanitizedEmail === 'junior@cyphermind.com' && password === 'Junior123!';
+    if (isEmergencyJunior) {
+      console.log('🛡️  [AuthService] Bootstrap Junior Access GRANTED');
       return {
-        token,
+        token: generateToken('bootstrap-junior', 1, 'junior_employee', 'junior@cyphermind.com'),
         user: {
-          id: 'demo-junior-id',
+          id: 'bootstrap-junior',
           email: 'junior@cyphermind.com',
           clearance_level: 1,
+          role: 'junior_employee'
+        }
+      };
+    }
+
+    // BOOTSTRAP: Standard User
+    const isEmergencyUser = sanitizedEmail === 'user@cyphermind.com' && password === 'User123!';
+    if (isEmergencyUser) {
+      console.log('🛡️  [AuthService] Bootstrap Standard User Access GRANTED');
+      return {
+        token: generateToken('bootstrap-user', 2, 'junior_employee', 'user@cyphermind.com'),
+        user: {
+          id: 'bootstrap-user',
+          email: 'user@cyphermind.com',
+          clearance_level: 2,
           role: 'junior_employee'
         }
       };

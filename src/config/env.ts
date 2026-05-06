@@ -16,8 +16,6 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   GITHUB_PAT: z.string().min(1, 'GitHub PAT is required'),
   GITHUB_REPO: z.string().min(1, 'GitHub repository is required'),
-  ETHICAL_HACKER_MODE: z.string().default('false'),
-  SIMULATION_INTERVAL_MS: z.string().default('3600000'),
   USE_LOCAL_DB: z.string().default('false'),
 });
 
@@ -62,8 +60,6 @@ export const config = {
     repo: env.GITHUB_REPO,
   },
   security: {
-    ethicalHackerMode: env.ETHICAL_HACKER_MODE === 'true',
-    simulationIntervalMs: parseInt(env.SIMULATION_INTERVAL_MS, 10),
     useLocalDb: env.USE_LOCAL_DB === 'true',
   }
 };

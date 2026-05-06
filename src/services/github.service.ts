@@ -104,12 +104,6 @@ export class GitHubService {
      * (With Demo Mode fallback if GITHUB_PAT is missing or invalid)
      */
     async createRemediationPR(issue: string, suggestedFix: string, fileName: string = 'SECURITY_FIX.md'): Promise<string> {
-        // DEMO BYPASS: If PAT is placeholder or missing, return a simulated PR
-        if (!this.pat || this.pat === 'your_gh_token_here' || this.pat.length < 10) {
-            console.log('🧪 [GitHubService] Demo Mode: Simulating real GitHub PR creation...');
-            return `https://github.com/${this.repo}/pull/${Math.floor(Math.random() * 1000) + 1}`;
-        }
-
         console.log(`[GitHubService] 🛡️ Initiating Real PR Pipeline for ${this.repo}`);
         const headers = {
             'Authorization': `token ${this.pat}`,
@@ -161,10 +155,19 @@ export class GitHubService {
             });
             const createBranchData: any = await createBranchRes.json();
             if (createBranchRes.status !== 201) {
+                console.error(`[GitHubService] ❌ Branch Creation Failed (Status ${createBranchRes.status}):`, createBranchData.message);
                 throw new Error(`Failed to create branch: ${createBranchData.message || 'Unknown Error'}`);
             }
 
-            // 3. Commit File
+            // 3. Commit File (Checking for existing SHA to avoid "sha wasn't supplied" error)
+            const getFileRes = await fetch(`${this.baseUrl}/repos/${this.repo}/contents/${fileName}?ref=${branchName}`, { headers });
+            let existingSha: string | undefined;
+            if (getFileRes.status === 200) {
+                const existingFileData: any = await getFileRes.json();
+                existingSha = existingFileData.sha;
+                console.log(`[GitHubService] ℹ️ Updating existing file: ${fileName} (sha: ${existingSha})`);
+            }
+
             const contentBase64 = Buffer.from(suggestedFix).toString('base64');
             const fileRes = await fetch(`${this.baseUrl}/repos/${this.repo}/contents/${fileName}`, {
                 method: 'PUT',
@@ -172,11 +175,13 @@ export class GitHubService {
                 body: JSON.stringify({
                     message: `security(fix): remediate ${issue.substring(0, 30)}...`,
                     content: contentBase64,
-                    branch: branchName
+                    branch: branchName,
+                    sha: existingSha // Required for updates
                 })
             });
             const fileData: any = await fileRes.json();
             if (fileRes.status !== 201 && fileRes.status !== 200) {
+                console.error(`[GitHubService] ❌ File Commit Failed (Status ${fileRes.status}):`, fileData.message);
                 throw new Error(`Failed to commit file: ${fileData.message || 'Unknown Error'}`);
             }
 
@@ -194,6 +199,7 @@ export class GitHubService {
 
             const prData: any = await prRes.json();
             if (prRes.status !== 201) {
+                console.error(`[GitHubService] ❌ PR Creation Failed (Status ${prRes.status}):`, prData.message);
                 throw new Error(`PR Creation Failed: ${prData.message || 'Unknown Error'}`);
             }
 
@@ -201,10 +207,7 @@ export class GitHubService {
             return prData.html_url;
         } catch (error: any) {
             console.error('[GitHubService] ❌ Real PR Integration Failed:', error.message);
-
-            // DEMO FALLBACK: If real PR fails (e.g. rate limit, conflict, expired token), return mock for demo continuity
-            console.log('🧩 [GitHubService] Fallback: Returning simulated PR to maintain demo flow.');
-            return `https://github.com/${this.repo}/pull/demo-${Date.now().toString(36)}`;
+            throw error; // Propagate error for proper UI feedback
         }
     }
 }

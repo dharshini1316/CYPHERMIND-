@@ -107,7 +107,7 @@ class VectorSearchService {
     // Extract keywords from query
     const keywords = query.toLowerCase().split(/\W+/).filter(word => word.length > 3);
 
-    const results = documents.map((doc) => {
+    const results = documents.map((doc: any) => {
       // Base score from vector similarity
       let score = this.cosineSimilarity(queryEmbedding, doc.embedding);
 
@@ -130,13 +130,8 @@ class VectorSearchService {
     });
 
     const finalResults = results
-      .sort((a, b) => b.score - a.score)
+      .sort((a: any, b: any) => b.score - a.score)
       .slice(0, limit);
-
-    // If still no results, return top 3 chunks anyway if it's the Admin during a demo
-    if (finalResults.length === 0 && userClearanceLevel === 3) {
-      return results.slice(0, 3);
-    }
 
     return finalResults;
   }

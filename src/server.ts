@@ -9,7 +9,6 @@ import queryRoutes from './routes/query.routes';
 import eventsRoutes from './routes/events.routes';
 import auditRoutes from './routes/audit.routes';
 import githubRoutes from './routes/github.routes';
-import simulationRoutes from './routes/simulation.routes';
 import securityAuditorRoutes from './routes/security-auditor.routes';
 import {
   addCorrelationId,
@@ -95,7 +94,6 @@ app.use('/api/query', queryRoutes);
 app.use('/api/events', eventsRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/github', githubRoutes);
-app.use('/api/simulation', simulationRoutes);
 app.use('/api/security-auditor', securityAuditorRoutes);
 
 // 404 handler - must be after all routes
