@@ -151,85 +151,12 @@ export class ScrubberService {
    * @returns Redacted text and matches
    */
   private async detectSemanticPII(text: string): Promise<{ redactedText: string; matches: PIIMatch[] }> {
-    try {
-      // Skip if text is already heavily redacted
-      if (text.includes('[REDACTED_') && text.split('[REDACTED_').length > 5) {
-        return { redactedText: text, matches: [] };
-      }
-
-      const prompt = `
-Task: Identify PII (names, addresses, IDs) in text that pattern matching might miss.
-Input: { "text": "${text}" }
-Output: A JSON array of objects with "text", "type", "start", "end".
-Constraints: Types must be: name, address, date_of_birth, account_number. Return [] if none.`;
-
-      const result = await this.model.generateContent(prompt);
-      const response = result.response.text();
-
-      // Parse Gemini response
-      const piiMatches = this.parseGeminiResponse(response);
-
-      // Redact detected PII
-      let redactedText = text;
-      const matches: PIIMatch[] = [];
-
-      // Sort matches by position (descending) to avoid index shifting
-      piiMatches.sort((a, b) => b.start - a.start);
-
-      for (const match of piiMatches) {
-        const placeholder = `[REDACTED_${match.type.toUpperCase()}]`;
-
-        matches.push({
-          type: match.type as PIIType,
-          original: match.text,
-          placeholder,
-          start: match.start,
-          end: match.end,
-        });
-
-        // Replace PII with placeholder
-        redactedText =
-          redactedText.substring(0, match.start) +
-          placeholder +
-          redactedText.substring(match.end);
-      }
-
-      return { redactedText, matches };
-    } catch (error) {
-      // console.error('Semantic PII detection failed:', error); // Log strictly to avoid Windows native crashes
-      // Return original text if semantic detection fails
-      return { redactedText: text, matches: [] };
-    }
+    // Semantic pass disabled — regex is sufficient and prevents Gemini JSON contamination in answers
+    return { redactedText: text, matches: [] };
   }
 
-  /**
-   * Parse Gemini response to extract PII matches
-   * @param response - Gemini API response
-   * @returns Array of PII matches
-   */
   private parseGeminiResponse(response: string): Array<{ text: string; type: string; start: number; end: number }> {
-    try {
-      // Extract JSON from response (handle markdown code blocks)
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        return [];
-      }
-
-      const parsed = JSON.parse(jsonMatch[0]);
-
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-
-      return parsed.filter(item =>
-        item.text && item.type &&
-        typeof item.start === 'number' &&
-        typeof item.end === 'number'
-      );
-    } catch (error) {
-      console.error('Failed to parse Gemini response:', error);
-      return [];
-    }
+    return [];
   }
 
   /**

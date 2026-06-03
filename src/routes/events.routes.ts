@@ -1,35 +1,19 @@
 import { Router } from 'express';
 import { getEvents, getEventStats } from '../controllers/events.controller';
-import { authenticate, requireClearance } from '../middleware/auth.middleware';
+import { authenticate, requireABAC } from '../middleware/auth.middleware';
 
 const router = Router();
 
 /**
- * All event routes require Security_Admin role (clearance level 3)
- */
-
-/**
  * GET /api/events
- * Get security events with filters
- * Requires: Security_Admin (clearance level 3)
+ * Full forensic event stream — admin only
  */
-router.get(
-  '/',
-  authenticate,
-  requireClearance(3),
-  getEvents
-);
+router.get('/', authenticate, requireABAC('events:read', 3), getEvents);
 
 /**
  * GET /api/events/stats
- * Get event statistics
- * Requires: Security_Admin (clearance level 3)
+ * Event statistics — all authenticated users (for role-filtered dashboard)
  */
-router.get(
-  '/stats',
-  authenticate,
-  requireClearance(3),
-  getEventStats
-);
+router.get('/stats', authenticate, requireABAC('events:stats'), getEventStats);
 
 export default router;

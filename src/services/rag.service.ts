@@ -1,11 +1,10 @@
-import { GoogleGenerativeAI } from '../utils/gemini';
+﻿import { GoogleGenerativeAI } from '../utils/gemini';
 import { z } from 'zod';
 import { env } from '../config/env';
 import { vectorSearchService, SearchResult } from './vector-search.service';
 import { scrubberService } from './scrubber.service';
 import { guardianService } from './guardian.service';
-// import { analystService } from './analyst.service';
-// import { remediationService } from './remediation.service';
+import { handleDemoPrompt } from './demo-access.service';
 import { AuditLog } from '../models/AuditLog';
 
 /**
@@ -69,15 +68,33 @@ export class RAGService {
    */
   async query(prompt: string, user: TokenPayload): Promise<RAGResponse> {
     const startTime = Date.now();
-    console.log(`[RAG] 🟢 Starting query orchestration for user: ${user.user_id}`);
+    console.log(`[RAG] ðŸŸ¢ Starting query orchestration for user: ${user.user_id}`);
 
     try {
+      // Demo intercept
+      const demoResult = handleDemoPrompt(prompt, user.clearance_level, user.role);
+      if (demoResult) {
+        console.log('[RAG] Demo prompt. Status:', demoResult.status);
+        if (!demoResult.approved) {
+          const err: any = new Error(demoResult.reason);
+          err.status = 403; err.code = 'SECURITY_VIOLATION'; err.abac_decision = demoResult.abac_decision;
+          throw err;
+        }
+        return { answer: demoResult.answer, sources: [], redactions_count: 0, processing_time_ms: Date.now() - startTime, abac_decision: demoResult.abac_decision } as any;
+      }
+
       console.log('[RAG] Step 1: Guardian analysis starting...');
       const guardianResult = await guardianService.analyzePrompt(
         prompt,
         user.clearance_level,
-        user.user_id
+        user.user_id,
+        user.role
       );
+
+      // Safety net â€” should never happen but prevents crash
+      if (!guardianResult) {
+        throw Object.assign(new Error('Security analysis unavailable'), { status: 403, code: 'SECURITY_VIOLATION' });
+      }
       console.log('[RAG] Step 1: Guardian analysis complete. Approved:', guardianResult.approved);
 
       if (!guardianResult.approved) {
@@ -97,7 +114,7 @@ export class RAGService {
       console.log(`[RAG] Step 2: Vector Search complete. Found ${chunks.length} chunks.`);
 
       if (chunks.length === 0) {
-        console.log('[RAG] ⚠️ No chunks found. Ending early.');
+        console.log('[RAG] âš ï¸ No chunks found. Ending early.');
         return {
           answer: 'I could not find any relevant information to answer your question.',
           sources: [],
@@ -139,7 +156,7 @@ export class RAGService {
       const redactedAnswer = finalRedaction.redacted_chunks[0];
       const totalRedactions = redactionResult.redactions_count + finalRedaction.redactions_count;
 
-      console.log(`[RAG] ✅ Query successful. Total time: ${Date.now() - startTime}ms`);
+      console.log(`[RAG] âœ… Query successful. Total time: ${Date.now() - startTime}ms`);
 
       return {
         answer: redactedAnswer,
@@ -148,25 +165,25 @@ export class RAGService {
         processing_time_ms: Date.now() - startTime,
       };
     } catch (error: any) {
-      console.error('[RAG] ❌ Query failed at some step:', error);
+      console.error('[RAG] âŒ Query failed at some step:', error);
       if (error.stack) console.error(error.stack);
       const errorMsg = error instanceof Error ? error.message : String(error);
       throw error; // Throw original error to preserve status codes if any
     }
   }
 
-  /**
-   * Build RAG prompt template
-   * @param context - Redacted document chunks
-   * @param question - User's question
-   * @returns Formatted prompt for Gemini
-   */
   private buildRAGPrompt(context: string, question: string): string {
-    return `
-Task: Answer the user question based ONLY on the provided context.
-Input: { "context": "${context}", "question": "${question}" }
-Output: A concise, direct answer. 
-Constraints: If the answer isn't in context, say "Information not found". Acknowledge [REDACTED_*] placeholders.`;
+    // Strip any JSON-like content from context to prevent Gemini confusion
+    const cleanContext = context.replace(/\{[^}]*"approved"[^}]*\}/g, '').trim();
+    return `You are an enterprise knowledge assistant. Answer this question: ${question}
+
+Use only this information:
+${cleanContext || context}
+
+Write 1-3 sentences in plain English. No JSON. No code. No curly braces.
+If information is unavailable, say: "I could not find relevant information."
+
+Answer:`;
   }
 
   /**

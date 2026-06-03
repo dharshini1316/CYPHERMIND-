@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { processQuery } from '../controllers/query.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireABAC } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import { querySchema } from '../schemas/query.schemas';
 
@@ -8,14 +8,8 @@ const router = Router();
 
 /**
  * POST /api/query
- * Process a RAG query
- * Requires authentication
+ * All authenticated users can query — ABAC + Guardian enforce what they can access
  */
-router.post(
-  '/',
-  authenticate,
-  validateRequest(querySchema),
-  processQuery
-);
+router.post('/', authenticate, requireABAC('query:restricted'), validateRequest(querySchema), processQuery);
 
 export default router;

@@ -24,6 +24,7 @@ import {
 import { websocketService } from './services/websocket.service';
 
 const app: Application = express();
+app.set('trust proxy', 1); // Fix X-Forwarded-For rate limit warning
 const server = http.createServer(app);
 
 // Security middleware - must be first
